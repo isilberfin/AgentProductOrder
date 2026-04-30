@@ -9,7 +9,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import requests
 import streamlit as st
 
-from constants import API_BASE_URL as API, DELAY_SECONDS, CHAT_WINDOW_SECONDS
+from config import API_BASE_URL as API
+from constants import DELAY_SECONDS, CHAT_WINDOW_SECONDS
 
 PRODUCT = json.loads(
     (Path(__file__).parent.parent / "data" / "products.json").read_text()

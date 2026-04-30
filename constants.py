@@ -1,4 +1,3 @@
-API_BASE_URL        = "http://localhost:8000"
 QUEUE               = "order_events"
 DELAY_SECONDS       = 30
 CHAT_WINDOW_SECONDS = 300
