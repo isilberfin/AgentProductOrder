@@ -15,7 +15,7 @@ from state.store import get_order, update_order, log_email
 from worker.mailer import send_email
 
 QUEUE         = "order_events"
-DELAY_SECONDS = 60
+DELAY_SECONDS = 30
 
 llm = ChatOpenAI(model="gpt-4o", api_key=OPENAI_API_KEY, max_tokens=512)
 
@@ -49,17 +49,18 @@ def _on_timeout(order_id: str):
     order = get_order(order_id)
     if not order or order["status"] != "pending":
         return
-    print(f"\n⏰  [{order_id[:8]}] 1 minute passed — sending delay apology")
+    print(f"\n⏰  [{order_id[:8]}] 30 seconds passed — sending delay apology")
     if order["apology_sent"]:
         return
-    subject, body = _llm_email(
-        "Write a short sincere apology email for a delayed order. "
-        "Subject line first, then body. 3-4 sentences max. "
-        "Sign as 'AgentMail Team'."
-    )
-    send_email(order["email"], subject, body, "delay_apology")
     update_order(order_id, apology_sent=1, status="delayed",
                  delayed_at=datetime.now(timezone.utc).isoformat())
+    subject, body = _llm_email(
+        f"Write a short sincere apology email for a delayed order. "
+        f"Address the customer as {order['name'].split()[0]}. "
+        f"Subject line first, then body. 3-4 sentences max. "
+        f"Sign as 'AgentMail Team'."
+    )
+    send_email(order["email"], subject, body, "delay_apology")
     log_email(order_id, "delay_apology")
 
 
@@ -69,18 +70,9 @@ def _on_delivered(order_id: str):
     order = get_order(order_id)
     if not order:
         return
-    send_thankyou = order["status"] == "pending" and not order["apology_sent"]
     update_order(order_id, delivered_at=datetime.now(timezone.utc).isoformat(),
                  status="delivered")
-    if send_thankyou:
-        subject, body = _llm_email(
-            "Write a short, warm order confirmation email. "
-            "Subject line first, then body. 3-4 sentences max. "
-            "Sign as 'AgentMail Team'."
-        )
-        send_email(order["email"], subject, body, "thank_you")
-        update_order(order_id, thankyou_sent=1)
-        log_email(order_id, "thank_you")
+    print(f"📦  [{order_id[:8]}] Order marked as delivered — waiting for review")
 
 
 def _on_review(order_id: str, review_text: str):
@@ -96,12 +88,22 @@ def _on_review(order_id: str, review_text: str):
             "Write a sincere apology for a bad experience."
         )
         subject, body = _llm_email(
-            f"{tone} Review: '{review_text}'. "
+            f"{tone} Address the customer as {order['name'].split()[0]}. Review: '{review_text}'. "
             "Subject line first, then body. 3-4 sentences. "
             "Sign as 'AgentMail Team'."
         )
         send_email(order["email"], subject, body, "review_apology")
         log_email(order_id, "review_apology")
+    else:  # POSITIVE or NEUTRAL
+        subject, body = _llm_email(
+            f"Write a short, warm thank you email for a positive review. "
+            f"Address the customer as {order['name'].split()[0]}. "
+            f"Subject line first, then body. 3-4 sentences max. "
+            f"Sign as 'AgentMail Team'."
+        )
+        send_email(order["email"], subject, body, "thank_you")
+        update_order(order_id, thankyou_sent=1)
+        log_email(order_id, "thank_you")
 
 
 # ── RabbitMQ consumer ──────────────────────────────────────────────────────────

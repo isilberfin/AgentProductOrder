@@ -16,6 +16,7 @@ def init_db():
         conn.execute("""
             CREATE TABLE IF NOT EXISTS orders (
                 order_id       TEXT PRIMARY KEY,
+                name           TEXT NOT NULL,
                 email          TEXT NOT NULL,
                 status         TEXT NOT NULL DEFAULT 'pending',
                 created_at     TEXT NOT NULL,
@@ -29,11 +30,11 @@ def init_db():
         """)
 
 
-def create_order(order_id: str, email: str):
+def create_order(order_id: str, name: str, email: str):
     with get_conn() as conn:
         conn.execute(
-            "INSERT INTO orders (order_id, email, created_at) VALUES (?, ?, ?)",
-            (order_id, email, datetime.now(timezone.utc).isoformat()),
+            "INSERT INTO orders (order_id, name, email, created_at) VALUES (?, ?, ?, ?)",
+            (order_id, name, email, datetime.now(timezone.utc).isoformat()),
         )
 
 

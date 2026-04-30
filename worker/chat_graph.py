@@ -67,13 +67,13 @@ def answer_order(state: ChatState) -> ChatState:
     docs = retrieve_order(state["message"])
     context = "\n\n".join(docs) if docs else ""
 
-    if elapsed < 60:
-        remaining = max(1, int(60 - elapsed))
+    if elapsed < 30:
+        remaining = max(1, int(30 - elapsed))
         delivery_status = (
             f"The order is currently being processed and should arrive in about {remaining} second(s)."
         )
     else:
-        secs_delayed = int(elapsed - 60)
+        secs_delayed = int(elapsed - 30)
         delivery_status = (
             f"The order is delayed (delayed {secs_delayed}s ago). "
             "A delay apology email has been sent. The order will arrive within 5 minutes of the delay notification."

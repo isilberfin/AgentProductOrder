@@ -32,6 +32,7 @@ def publish(event: str, order_id: str, **extra):
 
 
 class BuyRequest(BaseModel):
+    name: str
     email: str
 
 
@@ -42,9 +43,17 @@ class ReviewRequest(BaseModel):
 @app.post("/orders")
 def buy(req: BuyRequest):
     order_id = str(uuid.uuid4())
-    create_order(order_id, req.email)
+    create_order(order_id, req.name, req.email)
     publish("order_created", order_id)
     return {"order_id": order_id}
+
+
+@app.post("/orders/{order_id}/trigger-delay")
+def trigger_delay(order_id: str):
+    import threading
+    from worker.consumer import _on_timeout
+    threading.Thread(target=_on_timeout, args=[order_id], daemon=True).start()
+    return {"ok": True}
 
 
 @app.post("/orders/{order_id}/deliver")
@@ -75,6 +84,13 @@ def list_orders():
 
 class ChatRequest(BaseModel):
     message: str
+
+
+@app.post("/chat")
+def general_chat(req: ChatRequest):
+    """Chat before ordering - for product questions"""
+    response = chat(None, req.message, 0)
+    return {"response": response}
 
 
 @app.post("/orders/{order_id}/chat")
