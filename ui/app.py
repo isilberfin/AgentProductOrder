@@ -9,9 +9,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import requests
 import streamlit as st
 
-API  = "http://localhost:8000"
-DELAY_SECONDS       = 30
-CHAT_WINDOW_SECONDS = 300
+from constants import API_BASE_URL as API, DELAY_SECONDS, CHAT_WINDOW_SECONDS
 
 PRODUCT = json.loads(
     (Path(__file__).parent.parent / "data" / "products.json").read_text()
@@ -24,11 +22,12 @@ WELCOME_MSG = (
 
 st.set_page_config(page_title="AgentStudio", page_icon="🎧", layout="wide")
 
-# ── session init ───────────────────────────────────────────────────────────────
+# initialize session state defaults
 for key, val in [("demo_started", False), ("demo_done", False),
                  ("order_id", None), ("created_at", None),
                  ("chat_history", [{"role": "assistant", "content": WELCOME_MSG}]),
-                 ("show_review", False), ("waiting_for_response", False), ("buying", False)]:
+                 ("show_review", False), ("waiting_for_response", False), ("buying", False),
+                 ("pending_cancel", False), ("order_cancelled", False)]:
     if key not in st.session_state:
         st.session_state[key] = val
 
@@ -51,7 +50,9 @@ def reset():
     st.session_state.chat_history  = [{"role": "assistant", "content": WELCOME_MSG}]
     st.session_state.show_review   = False
     st.session_state.waiting_for_response = False
-    st.session_state.buying = False
+    st.session_state.buying        = False
+    st.session_state.pending_cancel = False
+    st.session_state.order_cancelled = False
 
 
 def product_card():
@@ -68,14 +69,23 @@ def product_card():
             st.caption(f"• {line.strip()}")
 
 
-# ── THANK YOU screen ───────────────────────────────────────────────────────────
-if st.session_state.demo_done:
+# show end screen if order was cancelled
+if st.session_state.order_cancelled:
     st.markdown("<br>" * 4, unsafe_allow_html=True)
     st.markdown("<h1 style='text-align:center'>🎉 Thank you for trying the demo!</h1>",
                 unsafe_allow_html=True)
     st.stop()
 
-# ── REVIEW screen ──────────────────────────────────────────────────────────────
+# show thank you screen after review is submitted
+if st.session_state.demo_done:
+    st.markdown("<br>" * 4, unsafe_allow_html=True)
+    st.markdown("<h1 style='text-align:center'>🎉 Thank you for trying the demo!</h1>",
+                unsafe_allow_html=True)
+    st.markdown("<p style='text-align:center; color:gray'>📬 One last email is on its way, check your inbox for a follow-up based on your review.</p>",
+                unsafe_allow_html=True)
+    st.stop()
+
+# review screen shown after delivery
 if st.session_state.show_review:
     st.title("🎧 SoundWave Pro")
     st.subheader("✍️ Leave a Review (optional)")
@@ -104,7 +114,7 @@ if st.session_state.show_review:
             st.rerun()
     st.stop()
 
-# ── LANDING screen ─────────────────────────────────────────────────────────────
+# landing screen with start button
 landing_slot = st.empty()
 start_clicked = False
 
@@ -126,7 +136,7 @@ if start_clicked:
 if not st.session_state.demo_started:
     st.stop()
 
-# ── main layout: product | order+chat ─────────────────────────────────────────
+# main layout: product card on the left, order + chat on the right
 prod_col, main_col = st.columns([1, 2], gap="large")
 
 with prod_col:
@@ -135,7 +145,7 @@ with prod_col:
 with main_col:
     need_auto_refresh = False
 
-    # ── BUY screen ─────────────────────────────────────────────────────────────
+    # order form for new users
     if st.session_state.order_id is None:
         st.subheader("Place Your Order")
         if not st.session_state.buying:
@@ -165,7 +175,7 @@ with main_col:
         else:
             st.info("⏳ Processing your order...")
 
-    # ── ORDER screen ──────────────────────────────────────────────────────────────
+    # order tracking screen
     else:
         order = fetch_order()
         if not order or "error" in order:
@@ -185,7 +195,7 @@ with main_col:
                 st.session_state.show_review = True
                 st.rerun()
 
-        # ── order status ────────────────────────────────────────────────────────
+        # render status-specific UI
         if status == "pending":
             if elapsed >= DELAY_SECONDS:
                 try:
@@ -235,7 +245,7 @@ with main_col:
         if status in ("pending", "delayed") and not st.session_state.waiting_for_response:
             need_auto_refresh = True
 
-    # ── CHAT (visible until review screen, but not during buying) ──────────────────────────────────────
+    # support chat, visible until the review screen appears
     if not st.session_state.show_review and not st.session_state.buying:
         st.divider()
         st.subheader("💬 Support")
@@ -243,17 +253,42 @@ with main_col:
         with chat_box:
             for msg in st.session_state.chat_history:
                 with st.chat_message(msg["role"]):
-                    st.write(msg["content"])
+                    st.markdown(msg["content"].replace("$", r"\$"))
 
         # Chat input always visible
         user_input = st.chat_input("Ask about your order or product...")
         if user_input:
-            # Append user message immediately
-            st.session_state.chat_history.append(
-                {"role": "user", "content": user_input}
-            )
-            st.session_state.waiting_for_response = True
-            st.rerun()  # Show user message immediately
+            st.session_state.chat_history.append({"role": "user", "content": user_input})
+
+            lowered = user_input.strip().lower()
+            # handle pending cancellation confirmation
+            if st.session_state.pending_cancel:
+                if any(w in lowered for w in ["yes", "yeah", "yep", "sure", "ok", "okay", "do it", "confirm"]):
+                    r = requests.post(f"{API}/orders/{st.session_state.order_id}/cancel", timeout=5)
+                    if r.ok and r.json().get("ok"):
+                        st.session_state.order_cancelled = True
+                    else:
+                        st.session_state.chat_history.append({
+                            "role": "assistant",
+                            "content": "Your order can no longer be cancelled as the 30-second window has passed."
+                        })
+                    st.session_state.pending_cancel = False
+                elif any(w in lowered for w in ["no", "nope", "don't", "dont", "keep"]):
+                    st.session_state.pending_cancel = False
+                    st.session_state.chat_history.append({
+                        "role": "assistant",
+                        "content": "No problem! Your order is still active."
+                    })
+                else:
+                    st.session_state.chat_history.append({
+                        "role": "assistant",
+                        "content": "Please reply **yes** to confirm cancellation or **no** to keep your order."
+                    })
+                st.rerun()
+
+            else:
+                st.session_state.waiting_for_response = True
+                st.rerun()
 
         # Get AI response on next render (if waiting)
         if st.session_state.waiting_for_response:
@@ -264,13 +299,31 @@ with main_col:
                 else:
                     url = f"{API}/chat"
                 
+                history = st.session_state.chat_history
+                last_bot = next(
+                    (m["content"] for m in reversed(history[:-1]) if m["role"] == "assistant"),
+                    ""
+                )
                 r = requests.post(
                     url,
-                    json={"message": st.session_state.chat_history[-1]["content"]},
+                    json={
+                        "message": history[-1]["content"],
+                        "last_bot_message": last_bot,
+                        "history": history[:-1],
+                    },
                     timeout=10,
                 )
                 reply = (r.json().get("response", "Sorry, I couldn't process that.")
                          if r.ok else "Error contacting support.")
+                # if LLM detected cancellation intent, handle it here
+                if reply.strip() == "__CANCEL__":
+                    can_cancel = (st.session_state.order_id and
+                                  time.time() - (st.session_state.created_at or 0) < DELAY_SECONDS)
+                    if can_cancel:
+                        st.session_state.pending_cancel = True
+                        reply = "Are you sure you want to cancel your order? Reply **yes** to confirm or **no** to keep it."
+                    else:
+                        reply = "Your order can no longer be cancelled as the 30-second window has passed."
                 st.session_state.chat_history.append(
                     {"role": "assistant", "content": reply}
                 )

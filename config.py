@@ -12,3 +12,8 @@ PINECONE_REGION  = os.getenv("PINECONE_REGION", "us-east-1")
 RABBITMQ_URL     = os.getenv("RABBITMQ_URL", "amqp://guest:guest@localhost/")
 MAIL_SENDER      = os.environ["MAIL_SENDER"]
 MAIL_PASSWORD    = os.environ["MAIL_PASSWORD"]
+
+R2_ACCESS_KEY_ID     = os.environ["R2_ACCESS_KEY_ID"]
+R2_SECRET_ACCESS_KEY = os.environ["R2_SECRET_ACCESS_KEY"]
+R2_ACCOUNT_ID        = os.environ["R2_ACCOUNT_ID"]
+R2_BUCKET            = os.environ["R2_BUCKET"]

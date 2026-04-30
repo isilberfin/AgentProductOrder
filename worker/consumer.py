@@ -11,25 +11,35 @@ from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage
 
 from config import RABBITMQ_URL, OPENAI_API_KEY
+from constants import QUEUE, DELAY_SECONDS
 from state.store import get_order, update_order, log_email
 from worker.mailer import send_email
-
-QUEUE         = "order_events"
-DELAY_SECONDS = 30
 
 llm = ChatOpenAI(model="gpt-4o", api_key=OPENAI_API_KEY, max_tokens=512)
 
 _timers: dict[str, threading.Timer] = {}
 
 
-# ── helpers ────────────────────────────────────────────────────────────────────
+# shared helpers
+
+def _to_str(content) -> str:
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return " ".join(
+            item["text"] if isinstance(item, dict) and "text" in item else str(item)
+            for item in content
+        )
+    return str(content)
+
 
 def _llm_email(prompt: str) -> tuple[str, str]:
     """Call LLM with prompt, return (subject, body)."""
     response = llm.invoke([HumanMessage(content=prompt)])
-    lines = response.content.strip().split("\n", 1)
+    text = _to_str(response.content).strip().replace("**", "").replace("*", "")
+    lines = text.split("\n", 1)
     subject = lines[0].replace("Subject:", "").strip()
-    body = lines[1].strip() if len(lines) > 1 else response.content
+    body = lines[1].strip() if len(lines) > 1 else text
     return subject, body
 
 
@@ -37,13 +47,17 @@ def _classify_sentiment(review_text: str) -> str:
     response = llm.invoke([HumanMessage(content=(
         f"Classify the sentiment of this customer review.\n"
         f"Review: \"{review_text}\"\n\n"
-        "Reply with one word only: NEGATIVE or POSITIVE."
+        "Reply with one word only: NEGATIVE, NEUTRAL, or POSITIVE."
     ))])
-    raw = response.content.strip().upper()
-    return "NEGATIVE" if "NEGATIVE" in raw else "POSITIVE"
+    raw = _to_str(response.content).strip().upper()
+    if "NEGATIVE" in raw:
+        return "NEGATIVE"
+    if "NEUTRAL" in raw:
+        return "NEUTRAL"
+    return "POSITIVE"
 
 
-# ── event handlers ─────────────────────────────────────────────────────────────
+# event handlers for each order event type
 
 def _on_timeout(order_id: str):
     order = get_order(order_id)
@@ -55,10 +69,12 @@ def _on_timeout(order_id: str):
     update_order(order_id, apology_sent=1, status="delayed",
                  delayed_at=datetime.now(timezone.utc).isoformat())
     subject, body = _llm_email(
-        f"Write a short sincere apology email for a delayed order. "
+        f"Write a professional yet warm apology email for a delayed order. "
         f"Address the customer as {order['name'].split()[0]}. "
-        f"Subject line first, then body. 3-4 sentences max. "
-        f"Sign as 'AgentMail Team'."
+        f"Tone: genuinely apologetic and a little embarrassed about the delay, but remain composed and professional. "
+        f"Reassure them their order is on its way and will be delivered shortly. "
+        f"Keep it concise: subject line first, then 3-4 sentences. "
+        f"Sign as 'AgentStudio Support Team'."
     )
     send_email(order["email"], subject, body, "delay_apology")
     log_email(order_id, "delay_apology")
@@ -79,34 +95,53 @@ def _on_review(order_id: str, review_text: str):
     order = get_order(order_id)
     if not order:
         return
-    sentiment = _classify_sentiment(review_text)
     update_order(order_id, review_text=review_text)
+
+    no_comment = review_text.strip().lower() in ("no comment", "", "no comment.")
+    sentiment = "NEUTRAL" if no_comment else _classify_sentiment(review_text)
+
     if sentiment == "NEGATIVE":
-        tone = (
-            "The customer already received a delay apology. Acknowledge this and offer extra support."
-            if order["apology_sent"] else
-            "Write a sincere apology for a bad experience."
+        delay_context = (
+            "Note: this customer also experienced a delivery delay and already received an apology for it. "
+            "Acknowledge this and show extra care. "
+            if order["apology_sent"] else ""
         )
         subject, body = _llm_email(
-            f"{tone} Address the customer as {order['name'].split()[0]}. Review: '{review_text}'. "
-            "Subject line first, then body. 3-4 sentences. "
-            "Sign as 'AgentMail Team'."
+            f"Write a professional and empathetic apology email in response to a negative customer review. "
+            f"{delay_context}"
+            f"Address the customer as {order['name'].split()[0]}. "
+            f"Their review was: '{review_text}'. "
+            f"Reference the specific issue they mentioned and show you understand what went wrong. "
+            f"End with a clear invitation for them to reply directly to this email with more details so the team can assist them further. "
+            f"Subject line first, then body. 4-5 sentences max. "
+            f"Sign as 'AgentStudio Support Team'."
         )
         send_email(order["email"], subject, body, "review_apology")
         log_email(order_id, "review_apology")
-    else:  # POSITIVE or NEUTRAL
+    elif sentiment == "NEUTRAL":
+        subject, body = _llm_email(
+            f"Write a brief, friendly thank you email to a customer who just received their order. "
+            f"Address the customer as {order['name'].split()[0]}. "
+            f"Keep it simple and warm, just thank them for their order and wish them well. "
+            f"Subject line first, then 2-3 sentences max. "
+            f"Sign as 'AgentStudio Support Team'."
+        )
+        send_email(order["email"], subject, body, "thank_you")
+        update_order(order_id, thankyou_sent=1)
+        log_email(order_id, "thank_you")
+    else:  # POSITIVE
         subject, body = _llm_email(
             f"Write a short, warm thank you email for a positive review. "
             f"Address the customer as {order['name'].split()[0]}. "
             f"Subject line first, then body. 3-4 sentences max. "
-            f"Sign as 'AgentMail Team'."
+            f"Sign as 'AgentStudio Support Team'."
         )
         send_email(order["email"], subject, body, "thank_you")
         update_order(order_id, thankyou_sent=1)
         log_email(order_id, "thank_you")
 
 
-# ── RabbitMQ consumer ──────────────────────────────────────────────────────────
+# RabbitMQ message handler and consumer startup
 
 def handle_message(ch, method, properties, body):
     msg      = json.loads(body)

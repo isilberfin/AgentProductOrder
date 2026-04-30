@@ -1,0 +1,18 @@
+[
+  {
+    "id": "P001",
+    "name": "SoundWave Pro Wireless Headphones",
+    "category": "Audio",
+    "price": 89.99,
+    "description": "Over-ear wireless headphones with active noise cancellation, premium 40mm drivers, and up to 30 hours of battery life. Designed for all-day comfort with memory foam ear cushions and an adjustable headband.",
+    "colors": {
+      "available": [],
+      "limited_edition": ["Forest Green"],
+      "note": "Available exclusively in Forest Green limited edition."
+    },
+    "specs": "Driver: 40mm dynamic | Frequency response: 20Hz–20kHz | Connectivity: Bluetooth 5.2 | Range: 10m | Battery: 30h playback / 5h charge time | Weight: 250g | Foldable: Yes | USB-C charging",
+    "warranty": "2-year manufacturer warranty covering defects in materials and workmanship. Does not cover physical damage, water damage, or unauthorized modifications.",
+    "return_policy": "30-day return policy. Item must be in original packaging, unused, and include all accessories (cable, carrying case, manual). Color exchanges accepted within 15 days.",
+    "faq": "Q: Is it compatible with iPhone and Android? A: Yes, works with any Bluetooth device. Q: Can I use it wired? A: Yes, includes a 3.5mm audio cable. Q: Is it waterproof? A: Sweat-resistant (IPX4) but not waterproof. Q: Does noise cancellation work without Bluetooth? A: Yes, ANC works in wired mode too."
+  }
+]

@@ -11,11 +11,11 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 
 from config import RABBITMQ_URL
+from constants import QUEUE
 from state.store import create_order, get_order, update_order, get_all_orders
 from worker.chat_graph import chat
 
 app = FastAPI()
-QUEUE = "order_events"
 
 
 def publish(event: str, order_id: str, **extra):
@@ -46,6 +46,15 @@ def buy(req: BuyRequest):
     create_order(order_id, req.name, req.email)
     publish("order_created", order_id)
     return {"order_id": order_id}
+
+
+@app.post("/orders/{order_id}/cancel")
+def cancel_order(order_id: str):
+    order = get_order(order_id)
+    if not order or order["status"] != "pending":
+        return {"error": "cannot cancel"}
+    update_order(order_id, status="cancelled")
+    return {"ok": True}
 
 
 @app.post("/orders/{order_id}/trigger-delay")
@@ -84,12 +93,14 @@ def list_orders():
 
 class ChatRequest(BaseModel):
     message: str
+    last_bot_message: str = ""
+    history: list[dict] = []
 
 
 @app.post("/chat")
 def general_chat(req: ChatRequest):
     """Chat before ordering - for product questions"""
-    response = chat(None, req.message, 0)
+    response = chat(None, req.message, 0, req.last_bot_message, req.history)
     return {"response": response}
 
 
@@ -102,5 +113,5 @@ def chat_endpoint(order_id: str, req: ChatRequest):
     elapsed = (datetime.now(timezone.utc) - created_at.replace(tzinfo=timezone.utc)
                if created_at.tzinfo is None
                else (datetime.now(timezone.utc) - created_at)).total_seconds()
-    response = chat(order_id, req.message, elapsed)
+    response = chat(order_id, req.message, elapsed, req.last_bot_message, req.history)
     return {"response": response}

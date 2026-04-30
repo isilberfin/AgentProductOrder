@@ -1,4 +1,4 @@
-import json
+import hashlib
 import sys
 from pathlib import Path
 
@@ -7,14 +7,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from openai import OpenAI
 from pinecone import Pinecone, ServerlessSpec
 from config import OPENAI_API_KEY, PINECONE_API_KEY, PINECONE_INDEX, PINECONE_CLOUD, PINECONE_REGION
-
-PRODUCTS_PATH   = Path(__file__).parent.parent / "data" / "products.json"
-PROCEDURES_PATH = Path(__file__).parent.parent / "data" / "order_procedures.json"
-EMBED_MODEL = "text-embedding-3-small"
-DIMENSION   = 1536
-
-NS_PRODUCTS   = "products"
-NS_PROCEDURES = "order-procedures"
+from constants import EMBED_MODEL, DIMENSION, NS_PRODUCTS, NS_PROCEDURES
+from worker.r2 import fetch_bytes
 
 _openai = OpenAI(api_key=OPENAI_API_KEY)
 _pc     = Pinecone(api_key=PINECONE_API_KEY)
@@ -38,66 +32,73 @@ def _embed(texts: list[str]) -> list[list[float]]:
     return [r.embedding for r in response.data]
 
 
-def _index_products(index):
-    stats = index.describe_index_stats()
-    ns_stats = stats.get("namespaces", {}).get(NS_PRODUCTS, {})
-    if ns_stats.get("vector_count", 0) > 0:
+def _content_hash(data: bytes) -> str:
+    return hashlib.md5(data).hexdigest()
+
+
+def _needs_reindex(index, namespace: str, current_hash: str) -> bool:
+    try:
+        result = index.fetch(ids=[f"_hash_{namespace}"], namespace=namespace)
+        stored = result.vectors.get(f"_hash_{namespace}", {})
+        return stored.get("metadata", {}).get("hash") != current_hash
+    except Exception:
+        return True
+
+
+def _save_hash(index, namespace: str, current_hash: str):
+    sentinel = [1.0] + [0.0] * (DIMENSION - 1)
+    index.upsert(
+        vectors=[{"id": f"_hash_{namespace}", "values": sentinel,
+                  "metadata": {"hash": current_hash}}],
+        namespace=namespace,
+    )
+
+
+def _chunk_text(text: str, min_chunk: int = 120) -> list[str]:
+    """Split by double newline, merging chunks that are too short."""
+    paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
+    chunks, current = [], ""
+    for para in paragraphs:
+        current = (current + "\n\n" + para).strip() if current else para
+        if len(current) >= min_chunk:
+            chunks.append(current)
+            current = ""
+    if current:
+        chunks.append(current)
+    return chunks
+
+
+def _index_text(index, filename: str, namespace: str, min_chunk: int = 120):
+    raw = fetch_bytes(filename)
+    current_hash = _content_hash(raw)
+    if not _needs_reindex(index, namespace, current_hash):
         return
 
-    products = json.loads(PRODUCTS_PATH.read_text())
-    docs, ids = [], []
-    for p in products:
-        colors = p.get("colors", {})
-        color_text = (
-            f"Available colors: {', '.join(colors.get('available', []))}. "
-            f"Limited edition: {', '.join(colors.get('limited_edition', []))}. "
-            f"{colors.get('note', '')}"
-        ) if colors else ""
-        doc = (
-            f"{p['name']}. {p['description']} "
-            f"{color_text} "
-            f"Specs: {p['specs']}. "
-            f"Warranty: {p['warranty']}. "
-            f"Return policy: {p['return_policy']}. "
-            f"{p['faq']}"
-        )
-        docs.append(doc)
-        ids.append(p["id"])
+    print(f"Re-indexing '{filename}' -> [{namespace}]...")
+    chunks = _chunk_text(raw.decode("utf-8"), min_chunk=min_chunk)
 
-    embeddings = _embed(docs)
+    try:
+        index.delete(delete_all=True, namespace=namespace)
+    except Exception:
+        pass
+
+    embeddings = _embed(chunks)
     vectors = [
-        {"id": ids[i], "values": embeddings[i], "metadata": {"text": docs[i]}}
-        for i in range(len(docs))
+        {
+            "id": f"{namespace}-{i}",
+            "values": embeddings[i],
+            "metadata": {"text": chunks[i]},
+        }
+        for i in range(len(chunks))
     ]
-    index.upsert(vectors=vectors, namespace=NS_PRODUCTS)
-    print(f"✅  Indexed {len(vectors)} products into Pinecone [{NS_PRODUCTS}]")
-
-
-def _index_procedures(index):
-    stats = index.describe_index_stats()
-    ns_stats = stats.get("namespaces", {}).get(NS_PROCEDURES, {})
-    if ns_stats.get("vector_count", 0) > 0:
-        return
-
-    procedures = json.loads(PROCEDURES_PATH.read_text())
-    docs, ids = [], []
-    for p in procedures:
-        doc = f"Q: {p['question']} A: {p['answer']}"
-        docs.append(doc)
-        ids.append(p["id"])
-
-    embeddings = _embed(docs)
-    vectors = [
-        {"id": ids[i], "values": embeddings[i], "metadata": {"text": docs[i]}}
-        for i in range(len(docs))
-    ]
-    index.upsert(vectors=vectors, namespace=NS_PROCEDURES)
-    print(f"✅  Indexed {len(vectors)} procedures into Pinecone [{NS_PROCEDURES}]")
+    index.upsert(vectors=vectors, namespace=namespace)
+    _save_hash(index, namespace, current_hash)
+    print(f"✅  Indexed {len(vectors)} chunks into Pinecone [{namespace}]")
 
 
 _index = _get_index()
-_index_products(_index)
-_index_procedures(_index)
+_index_text(_index, "products.txt",          NS_PRODUCTS,   min_chunk=120)
+_index_text(_index, "order_procedures.txt",  NS_PROCEDURES, min_chunk=0)
 
 
 def retrieve(query: str, n: int = 3) -> list[str]:

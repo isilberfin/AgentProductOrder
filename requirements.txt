@@ -9,3 +9,4 @@ langgraph==1.0.8
 langchain-openai==1.1.16
 langchain-core==1.3.0
 python-dotenv==1.0.1
+boto3==1.38.0
