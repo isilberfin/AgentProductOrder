@@ -10,8 +10,8 @@ PINECONE_INDEX   = os.getenv("PINECONE_INDEX", "agentmail-products")
 PINECONE_CLOUD   = os.getenv("PINECONE_CLOUD", "aws")
 PINECONE_REGION  = os.getenv("PINECONE_REGION", "us-east-1")
 RABBITMQ_URL     = os.getenv("RABBITMQ_URL", "amqp://guest:guest@localhost/")
-MAIL_SENDER      = os.environ["MAIL_SENDER"]
-RESEND_API_KEY   = os.environ["RESEND_API_KEY"]
+MAIL_SENDER    = os.environ["MAIL_SENDER"]
+BREVO_API_KEY  = os.environ["BREVI_API_KEY"]
 
 R2_ACCESS_KEY_ID     = os.environ["R2_ACCESS_KEY_ID"]
 R2_SECRET_ACCESS_KEY = os.environ["R2_SECRET_ACCESS_KEY"]
