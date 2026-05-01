@@ -148,20 +148,26 @@ def handle_message(ch, method, properties, body):
     event    = msg["event"]
     order_id = msg["order_id"]
 
-    print(f"\n📨  Event received: {event.upper()} | order={order_id[:8]}")
+    print(f"\n📨  Event received: {event.upper()} | order={order_id[:8]}", flush=True)
 
-    if event == "order_created":
-        create_order(order_id, msg["name"], msg["email"])
-        t = threading.Timer(DELAY_SECONDS, _on_timeout, args=[order_id])
-        t.daemon = True
-        t.start()
-        _timers[order_id] = t
+    try:
+        if event == "order_created":
+            create_order(order_id, msg["name"], msg["email"])
+            t = threading.Timer(DELAY_SECONDS, _on_timeout, args=[order_id])
+            t.daemon = True
+            t.start()
+            _timers[order_id] = t
 
-    elif event == "order_delivered":
-        _on_delivered(order_id)
+        elif event == "order_delivered":
+            _on_delivered(order_id)
 
-    elif event == "review_submitted":
-        _on_review(order_id, msg.get("review_text", ""))
+        elif event == "review_submitted":
+            _on_review(order_id, msg.get("review_text", ""))
+
+    except Exception as e:
+        import traceback
+        print(f"\n💥  ERROR in {event}: {e}", flush=True)
+        traceback.print_exc()
 
     ch.basic_ack(delivery_tag=method.delivery_tag)
 
