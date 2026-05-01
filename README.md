@@ -1,4 +1,4 @@
-# AgentMail
+# AgentStudio
 
 An AI-powered order management and customer support system built as a portfolio project. It monitors orders in real time, sends LLM-generated emails on key events, and provides a RAG-based support chat.
 
