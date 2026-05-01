@@ -211,7 +211,7 @@ with main_col:
                 "**Demo tip:** Estimated arrival time is **30 seconds**. "
                 "To trigger the demo flow for receiving your product, click the button below!\n\n"
                 "⚠️ If you don't click the button: after **30 seconds** you'll receive an apology email for the delay "
-                "from **agentmailyourorder@gmail.com** (please check your spam folder!), "
+                "from **agentmailyourorder@11128390.brevosend.com** (please check your spam folder!), "
                 "and after **5 minutes** you'll be automatically taken to the review page.\n\n"
                 "💬 Feel free to ask about your order or product information in the support chat below, the chat will remain available until you reach the review page, which will be 5 minutes after the delay notification!"
             )
@@ -227,7 +227,7 @@ with main_col:
             remaining_chat = max(0, CHAT_WINDOW_SECONDS - secs_since)
             st.subheader("⚠️ Status: Delayed")
             st.info(
-                "We're sorry for the delay! An apology email has been sent to you from **agentmailyourorder@gmail.com**, "
+                "We're sorry for the delay! An apology email has been sent to you from **agentmailyourorder@11128390.brevosend.com**, "
                 "please check your **spam folder** if you don't see it.\n\n"
                 "⏱️ You will be automatically directed to the review page in **5 minutes**. "
                 "To trigger it now, click the button below, or feel free to use the support chat meanwhile!"
