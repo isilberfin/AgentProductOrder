@@ -44,7 +44,7 @@ class ReviewRequest(BaseModel):
 def buy(req: BuyRequest):
     order_id = str(uuid.uuid4())
     create_order(order_id, req.name, req.email)
-    publish("order_created", order_id)
+    publish("order_created", order_id, name=req.name, email=req.email)
     return {"order_id": order_id}
 
 

@@ -12,7 +12,7 @@ from langchain_core.messages import HumanMessage
 
 from config import RABBITMQ_URL, OPENAI_API_KEY
 from constants import QUEUE, DELAY_SECONDS
-from state.store import get_order, update_order, log_email
+from state.store import create_order, get_order, update_order, log_email
 from worker.mailer import send_email
 
 llm = ChatOpenAI(model="gpt-4o", api_key=OPENAI_API_KEY, max_tokens=512)
@@ -151,6 +151,7 @@ def handle_message(ch, method, properties, body):
     print(f"\n📨  Event received: {event.upper()} | order={order_id[:8]}")
 
     if event == "order_created":
+        create_order(order_id, msg["name"], msg["email"])
         t = threading.Timer(DELAY_SECONDS, _on_timeout, args=[order_id])
         t.daemon = True
         t.start()
