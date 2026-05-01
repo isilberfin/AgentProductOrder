@@ -57,14 +57,6 @@ def cancel_order(order_id: str):
     return {"ok": True}
 
 
-@app.post("/orders/{order_id}/trigger-delay")
-def trigger_delay(order_id: str):
-    import threading
-    from worker.consumer import _on_timeout
-    threading.Thread(target=_on_timeout, args=[order_id], daemon=True).start()
-    return {"ok": True}
-
-
 @app.post("/orders/{order_id}/deliver")
 def deliver(order_id: str):
     order = get_order(order_id)

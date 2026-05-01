@@ -198,11 +198,6 @@ with main_col:
 
         # render status-specific UI
         if status == "pending":
-            if elapsed >= DELAY_SECONDS:
-                try:
-                    requests.post(f"{API}/orders/{order['order_id']}/trigger-delay", timeout=10)
-                except Exception:
-                    pass
             st.subheader("⏳ Your order is on its way!")
             remaining = max(0, DELAY_SECONDS - elapsed)
             st.progress(1 - remaining / DELAY_SECONDS,

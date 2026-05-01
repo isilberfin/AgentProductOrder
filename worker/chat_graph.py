@@ -85,7 +85,7 @@ def classify(state: ChatState) -> ChatState:
     response = llm.invoke([HumanMessage(content=(
         "Classify this customer message into exactly one category:\n"
         "- product   (features, specs, warranty, return policy, compatibility)\n"
-        "- order     (status, shipping, delivery, where is my order, delay)\n"
+        "- order     (status, shipping, delivery, where is my order, delay, contact support, email address, how to reach you, cancellation)\n"
         "- unrelated (anything else)\n\n"
         f"Message: \"{state['message']}\"\n\n"
         "Reply with one word only: product, order, or unrelated."
@@ -115,7 +115,7 @@ def answer_product(state: ChatState) -> ChatState:
         response = llm.invoke(_build_messages(system_prompt, state.get("history", []), state["message"]))
         answer = _to_str(response.content).strip()
     else:
-        answer = "I couldn't find specific product information for your question. Please contact our support team."
+        answer = "I couldn't find specific product information for your question. Please reach us at **agentmailyourorder@gmail.com** and we'll be happy to help!"
     return {**state, "response": answer}
 
 
@@ -162,11 +162,14 @@ def answer_order(state: ChatState) -> ChatState:
         if already_suggested:
             answer = (
                 "I'm sorry, I still couldn't fully understand your question. "
-                "Could you try rephrasing it? I'll do my best to help you."
+                "Feel free to reach us directly at **agentmailyourorder@gmail.com** and we'll be happy to help!"
             )
         else:
             numbered = "\n".join(f"{i + 1}. {q}" for i, q in enumerate(questions))
-            answer = f"I'm not sure I understood your question. Did you mean one of these?\n\n{numbered}"
+            answer = (
+                f"I'm not sure I understood your question. Did you mean one of these?\n\n{numbered}\n\n"
+                "If none of these match, you can also reach us at **agentmailyourorder@gmail.com**."
+            )
 
     return {**state, "response": answer}
 
@@ -175,7 +178,8 @@ def answer_unrelated(state: ChatState) -> ChatState:
     system_prompt = (
         "You are a friendly e-commerce customer support agent. "
         "Answer the following question briefly. "
-        "If it is completely off-topic, politely redirect to order or product questions."
+        "If it is completely off-topic, politely redirect to order or product questions. "
+        "If you cannot help, suggest the customer reach us at agentmailyourorder@gmail.com."
     )
     response = llm.invoke(_build_messages(system_prompt, state.get("history", []), state["message"]))
     return {**state, "response": _to_str(response.content).strip()}
