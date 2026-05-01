@@ -8,7 +8,7 @@ from config import BREVO_API_KEY, MAIL_SENDER
 
 
 def send_email(to: str, subject: str, body: str, email_type: str):
-    requests.post(
+    resp = requests.post(
         "https://api.brevo.com/v3/smtp/email",
         headers={
             "api-key": BREVO_API_KEY,
@@ -21,4 +21,7 @@ def send_email(to: str, subject: str, body: str, email_type: str):
             "textContent": body,
         },
     )
-    print(f"\n✉️  [{email_type.upper()}] sent to {to} | Subject: {subject}")
+    if resp.ok:
+        print(f"\n✉️  [{email_type.upper()}] sent to {to} | Subject: {subject}")
+    else:
+        print(f"\n❌  [{email_type.upper()}] FAILED to {to} | status={resp.status_code} | {resp.text}")
